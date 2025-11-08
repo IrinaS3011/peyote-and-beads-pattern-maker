@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Peyote & Bead Pattern Generator (Unified, Split Peyote Print)</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f4f4;
+      padding: 20px;
+      text-align: center;
+    }
+
+    h1 { margin-bottom: 10px; }
+
+    #sections {
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+
+    .section {
+      background: white;
+      padding: 10px 15px;
+      border-radius: 10px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+
+    #workspace {
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      gap: 40px;
+      margin-top: 25px;
+    }
+
+    #grid { position: relative; margin-bottom: 20px; }
+
+    /* Peyote grid */
+    .peyote-grid {
+      display: inline-grid;
+      justify-content: center;
+    }
+
+    .cell {
+      width: 30px;
+      height: 30px;
+      background: white;
+      border: 1px solid #ccc;
+      cursor: pointer;
+      border-radius: 50%;
+      transition: background 0.2s, transform 0.2s;
+      box-sizing: border-box;
+      user-select: none;
+    }
+
+    .cell:hover { outline: 2px solid #000; }
+
+    .peyote-grid .cell.square { border-radius: 0; }
+
+    /* Beads table */
+    table {
+      border-collapse: collapse;
+      margin: auto;
+      border-spacing: 0;
+    }
+
+    td {
+      width: 26px;
+      height: 26px;
+      padding: 0;
+      text-align: center;
+      vertical-align: middle;
+      overflow: visible;
+      position: relative;
+    }
+
+    .empty {
+      width: 12px;
+      height: 12px;
+      padding: 0;
+    }
+
+    .bead {
+      width: 34px;
+      height: 34px;
+      margin: -4px;
+      background: white;
+      border: 1px solid #ccc;
+      border-radius: 50%;
+      cursor: pointer;
+      user-select: none;
+      position: relative;
+      z-index: 1;
+      transition: background 0.2s;
+    }
+
+    .bead:hover {
+      outline: 2px solid #000;
+      z-index: 2;
+    }
+
+    button {
+      margin: 5px;
+      padding: 6px 12px;
+      cursor: pointer;
+    }
+
+    #output {
+      font-family: monospace;
+      white-space: pre;
+      text-align: left;
+      background: #fff;
+      padding: 15px;
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+      min-width: 260px;
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 3px;
+    }
+
+    .color-box {
+      width: 20px;
+      height: 20px;
+      border: 1px solid #ccc;
+    }
+
+    h4 { margin-top: 10px; margin-bottom: 4px; }
+
+    .pattern-line {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+    }
+
+    .row-number {
+      width: 60px;
+      text-align: right;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <h1>Peyote & Bead Pattern Generator (Unified, Split Peyote Print)</h1>
+
+  <div id="sections">
+    <div class="section">
+      <h3>Grid Controls</h3>
+      <label>Rows: <input type="number" id="rows" value="8" min="1" max="50"></label>
+      <label>Cols: <input type="number" id="cols" value="10" min="1" max="50"></label>
+      <label>Color: <input type="color" id="colorPicker" value="#ff0000"></label><br/>
+      <button id="generateGrid">Generate Grid</button>
+      <button id="printPattern">Print Pattern</button>
+    </div>
+
+    <div class="section">
+      <h3>Peyote Controls</h3>
+      <button id="peyoteBtn">Peyote</button>
+      <button id="peyoteInvertBtn">Invert</button>
+    </div>
+
+    <div class="section">
+      <h3>Beads Controls</h3>
+      <button id="beadsBtn">Beads</button>
+      <button id="beadsInvertBtn">Invert</button>
+    </div>
+  </div>
+
+  <div id="workspace">
+    <div id="grid"></div>
+    <div id="output"></div>
+  </div>
+
+  <script>
+    const gridContainer = document.getElementById("grid");
+    const colorPicker = document.getElementById("colorPicker");
+    const generateButton = document.getElementById("generateGrid");
+    const printButton = document.getElementById("printPattern");
+    const peyoteBtn = document.getElementById("peyoteBtn");
+    const peyoteInvertBtn = document.getElementById("peyoteInvertBtn");
+    const beadsBtn = document.getElementById("beadsBtn");
+    const beadsInvertBtn = document.getElementById("beadsInvertBtn");
+    const outputDiv = document.getElementById("output");
+
+    let gridData = [];
+    const colorMap = new Map();
+    let nextLetter = "A".charCodeAt(0);
+
+    let mode = "beads";
+    let peyoteInverted = false;
+    let beadsInverted = false;
+    let isPainting = false;
+
+    const cellSize = 30;
+
+    function getLetterForColor(color) {
+      const normalized = color.toLowerCase();
+      if (normalized === "#ffffff" || normalized === "white") return "0";
+      if (!colorMap.has(normalized)) {
+        colorMap.set(normalized, String.fromCharCode(nextLetter));
+        nextLetter++;
+      }
+      return colorMap.get(normalized);
+    }
+
+    function generateGrid() {
+      const rows = parseInt(document.getElementById("rows").value);
+      const cols = parseInt(document.getElementById("cols").value);
+      gridContainer.innerHTML = "";
+      gridData = [];
+
+      if (mode === "peyote") {
+        generatePeyoteGrid(rows, cols);
+      } else {
+        generateBeadsGrid(rows, cols);
+      }
+
+      document.addEventListener("mouseup", () => (isPainting = false));
+    }
+
+    function generatePeyoteGrid(rows, cols) {
+      gridContainer.className = "peyote-grid";
+      gridContainer.style.gridTemplateColumns = `repeat(${cols}, ${cellSize}px)`;
+
+      for (let r = 0; r < rows; r++) {
+        const row = [];
+        for (let c = 0; c < cols; c++) {
+          const cell = document.createElement("div");
+          cell.className = "cell square";
+          cell.dataset.row = r;
+          cell.dataset.col = c;
+          cell.style.background = "white";
+
+          cell.addEventListener("mousedown", (e) => {
+            e.preventDefault();
+            isPainting = true;
+            paintCell(cell);
+          });
+          cell.addEventListener("mouseover", () => {
+            if (isPainting) paintCell(cell);
+          });
+
+          const moveUp = peyoteInverted ? c % 2 !== 0 : c % 2 === 0;
+          if (moveUp) cell.style.transform = `translateY(-${cellSize / 2}px)`;
+          else cell.style.transform = "translateY(0)";
+
+          gridContainer.appendChild(cell);
+          row[c] = "white";
+        }
+        gridData.push(row);
+      }
+    }
+
+    function generateBeadsGrid(rows, cols) {
+      gridContainer.className = "";
+      const table = document.createElement("table");
+
+      for (let r = 0; r < rows; r++) {
+        const tr = document.createElement("tr");
+        const hasExtra = beadsInverted ? r % 2 === 0 : r % 2 !== 0;
+        const beadCount = hasExtra ? cols + 1 : cols;
+        const totalCols = cols + 1;
+        const startIndex = hasExtra ? 0 : 1;
+
+        const row = [];
+        let beadIndex = 0;
+        for (let c = 0; c < totalCols; c++) {
+          const td = document.createElement("td");
+          if (c >= startIndex && (c - startIndex) % 2 === 0 && beadIndex < beadCount) {
+            const cell = document.createElement("div");
+            cell.className = "bead";
+            cell.dataset.row = r;
+            cell.dataset.col = beadIndex;
+            cell.style.background = "white";
+
+            cell.addEventListener("mousedown", (e) => {
+              e.preventDefault();
+              isPainting = true;
+              paintCell(cell);
+            });
+            cell.addEventListener("mouseover", () => {
+              if (isPainting) paintCell(cell);
+            });
+
+            td.appendChild(cell);
+            row[beadIndex++] = "white";
+          } else {
+            td.className = "empty";
+          }
+          tr.appendChild(td);
+        }
+        gridData.push(row);
+        table.appendChild(tr);
+      }
+      gridContainer.appendChild(table);
+    }
+
+    function paintCell(cell) {
+      const selectedColor = colorPicker.value;
+      cell.style.background = selectedColor;
+      const r = parseInt(cell.dataset.row);
+      const c = parseInt(cell.dataset.col);
+      if (!gridData[r]) gridData[r] = [];
+      gridData[r][c] = selectedColor;
+    }
+
+    function printPattern() {
+      outputDiv.innerHTML = "";
+      colorMap.clear();
+      nextLetter = "A".charCodeAt(0);
+      const patternContainer = document.createElement("div");
+
+      if (mode === "peyote") {
+        for (let r = 0; r < gridData.length; r++) {
+          let liftedRow = "";
+          let flatRow = "";
+          const row = gridData[r] || [];
+
+          for (let c = 0; c < row.length; c++) {
+            const color = row[c] || "white";
+            const letter = getLetterForColor(color);
+            const moveUp = peyoteInverted ? c % 2 !== 0 : c % 2 === 0;
+            if (moveUp) liftedRow += letter;
+            else flatRow += letter;
+          }
+
+          const lineA = document.createElement("div");
+          lineA.className = "pattern-line";
+          lineA.innerHTML = `<span class="row-number">Row ${r + 1}a:</span><span>${liftedRow}</span>`;
+
+          const lineB = document.createElement("div");
+          lineB.className = "pattern-line";
+          lineB.innerHTML = `<span class="row-number">Row ${r + 1}b:</span><span>${flatRow}</span>`;
+
+          patternContainer.appendChild(lineA);
+          patternContainer.appendChild(lineB);
+        }
+      } else {
+        // Beads mode simple one-row pattern
+        for (let r = 0; r < gridData.length; r++) {
+          let line = "";
+          const row = gridData[r] || [];
+          for (let c = 0; c < row.length; c++) {
+            line += getLetterForColor(row[c] || "white");
+          }
+          const lineDiv = document.createElement("div");
+          lineDiv.className = "pattern-line";
+          lineDiv.innerHTML = `<span class="row-number">Row ${r + 1}:</span><span>${line}</span>`;
+          patternContainer.appendChild(lineDiv);
+        }
+      }
+
+      outputDiv.appendChild(patternContainer);
+
+      // Legend
+      const legendTitle = document.createElement("h4");
+      legendTitle.textContent = "Color Legend:";
+      outputDiv.appendChild(legendTitle);
+
+      colorMap.forEach((letter, color) => {
+        const item = document.createElement("div");
+        item.className = "legend-item";
+        const box = document.createElement("div");
+        box.className = "color-box";
+        box.style.background = color;
+        const label = document.createElement("span");
+        label.textContent = `${letter} (${color})`;
+        item.appendChild(box);
+        item.appendChild(label);
+        outputDiv.appendChild(item);
+      });
+
+      const whiteItem = document.createElement("div");
+      whiteItem.className = "legend-item";
+      const whiteBox = document.createElement("div");
+      whiteBox.className = "color-box";
+      whiteBox.style.background = "white";
+      const whiteLabel = document.createElement("span");
+      whiteLabel.textContent = "0 (white)";
+      whiteItem.appendChild(whiteBox);
+      whiteItem.appendChild(whiteLabel);
+      outputDiv.appendChild(whiteItem);
+    }
+
+    // Controls
+    generateButton.addEventListener("click", generateGrid);
+    printButton.addEventListener("click", printPattern);
+    peyoteBtn.addEventListener("click", () => { mode = "peyote"; generateGrid(); });
+    peyoteInvertBtn.addEventListener("click", () => { peyoteInverted = !peyoteInverted; if (mode==="peyote") generateGrid(); });
+    beadsBtn.addEventListener("click", () => { mode = "beads"; generateGrid(); });
+    beadsInvertBtn.addEventListener("click", () => { beadsInverted = !beadsInverted; if (mode==="beads") generateGrid(); });
+
+    generateGrid();
+  </script>
+</body>
+</html>
